@@ -1,8 +1,10 @@
-This code is provided "as is" and Glowforge is not able to provide
-support for it.
+This software is provided "as is", without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability, fitness
+for a particular purpose and noninfringement. In no event shall the authors or
+copyright holders be liable for any claim, damages or other liability, whether
+in an action of contract, tort or otherwise, arising from, out of or in
+connection with the software or the use or other dealings in the software. 
 
-Glowforge does not accept pull requests through GitHub.
-If you would like to submit a patch or make us aware of an issue,
-please contact us at opensource@glowforge.com.
-
-See https://glowforge.com/open-source for more information.
+Unfortunately, we are not be able to review pull requests. Should you find a
+security issue, please report it at https://glowforge.com/security. Otherwise,
+see https://glowforge.com/open-source for more information.
