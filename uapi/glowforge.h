@@ -3,8 +3,7 @@
  *
  * Userspace API to the Glowforge kernel module.
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
- * Written by Matt Sarnoff with contributions from Taylor Vaughn.
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,14 +34,14 @@
 #define ROOT_CLASS_NAME           "class"
 #define LED_GROUP_NAME            "leds"
 
-#define SYSFS_ROOT_DIR            "/sys/" ROOT_KOBJ_NAME "/"
+#define SYSFS_ROOT_DIR            STR(CONFIG_FILE_PREFIX) "/sys/" ROOT_KOBJ_NAME "/"
 #define SYSFS_ATTR_DIR            SYSFS_ROOT_DIR CNC_GROUP_NAME "/"
 #define PIC_SYSFS_ATTR_DIR        SYSFS_ROOT_DIR PIC_GROUP_NAME "/"
 #define THERMAL_SYSFS_ATTR_DIR    SYSFS_ROOT_DIR THERMAL_GROUP_NAME "/"
-#define PULSE_DEVICE_DIR          "/dev/"
-#define INPUT_DEVICE_DIR          "/dev/input/by-path/"
+#define PULSE_DEVICE_DIR          STR(CONFIG_FILE_PREFIX) "/dev/"
+#define INPUT_DEVICE_DIR          STR(CONFIG_FILE_PREFIX) "/dev/input/by-path/"
 
-#define SYSFS_CLASS_DIR           "/sys/" ROOT_CLASS_NAME "/"
+#define SYSFS_CLASS_DIR           STR(CONFIG_FILE_PREFIX) "/sys/" ROOT_CLASS_NAME "/"
 #define LED_SYSFS_ROOT            SYSFS_CLASS_DIR LED_GROUP_NAME "/"
 
 #define PULSE_DEVICE_NAME         "glowforge"
@@ -56,10 +55,12 @@
 #define ATTR_RESUME               resume
 #define ATTR_DISABLE              disable
 #define ATTR_ENABLE               enable
+#define ATTR_HALT                 halt
 #define ATTR_Z_STEP               z_step
 #define ATTR_LASER_LATCH          laser_latch
 #define ATTR_MOTOR_LOCK           motor_lock
 #define ATTR_POSITION             position
+#define ATTR_FREE                 free
 #define ATTR_SDMA_CONTEXT         sdma_context
 #define ATTR_X_MODE               x_mode
 #define ATTR_X_DECAY              x_decay
@@ -102,14 +103,19 @@
 #define ATTR_WATER_TEMP_1         water_temp_1
 #define ATTR_WATER_TEMP_2         water_temp_2
 
+#define LED_CROSSFADING_STATE_STATIC      0
+#define LED_CROSSFADING_STATE_CROSSFADING 1
+
 #define PULSE_DEVICE_PATH         PULSE_DEVICE_DIR PULSE_DEVICE_NAME
 #define ATTR_STATE_PATH           SYSFS_ATTR_DIR STR(ATTR_STATE)
 #define ATTR_FAULTS_PATH          SYSFS_ATTR_DIR STR(ATTR_FAULTS)
 #define ATTR_IGNORED_FAULTS_PATH  SYSFS_ATTR_DIR STR(ATTR_IGNORED_FAULTS)
 #define ATTR_POSITION_PATH        SYSFS_ATTR_DIR STR(ATTR_POSITION)
+#define ATTR_FREE_PATH            SYSFS_ATTR_DIR STR(ATTR_FREE)
 #define ATTR_LASER_LATCH_PATH     SYSFS_ATTR_DIR STR(ATTR_LASER_LATCH)
 #define ATTR_RUN_PATH             SYSFS_ATTR_DIR STR(ATTR_RUN)
 #define ATTR_STOP_PATH            SYSFS_ATTR_DIR STR(ATTR_STOP)
+#define ATTR_HALT_PATH            SYSFS_ATTR_DIR STR(ATTR_HALT)
 #define ATTR_RESUME_PATH          SYSFS_ATTR_DIR STR(ATTR_RESUME)
 #define ATTR_DISABLE_PATH         SYSFS_ATTR_DIR STR(ATTR_DISABLE)
 #define ATTR_X_MODE_PATH          SYSFS_ATTR_DIR STR(ATTR_X_MODE)
@@ -147,12 +153,19 @@
 
 #define LED_TARGET_SUFFIX                 "/target"
 #define LED_SPEED_SUFFIX                  "/speed"
+#define LED_DITHER_SUFFIX                 "/dither"
+#define LED_CROSSFADING_SUFFIX            "/crossfading"
 
 #define BUTTON_LED_1_TARGET_FILE          LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_1) LED_TARGET_SUFFIX
 #define BUTTON_LED_2_TARGET_FILE          LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_2) LED_TARGET_SUFFIX
 #define BUTTON_LED_3_TARGET_FILE          LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_3) LED_TARGET_SUFFIX
+#define BUTTON_LED_1_CROSSFADING_FILE     LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_1) LED_CROSSFADING_SUFFIX
+#define BUTTON_LED_2_CROSSFADING_FILE     LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_2) LED_CROSSFADING_SUFFIX
+#define BUTTON_LED_3_CROSSFADING_FILE     LED_SYSFS_ROOT STR(ATTR_BUTTON_LED_3) LED_CROSSFADING_SUFFIX
 #define LID_LED_TARGET_FILE               LED_SYSFS_ROOT STR(ATTR_LID_LED) LED_TARGET_SUFFIX
 #define LID_LED_SPEED_FILE                LED_SYSFS_ROOT STR(ATTR_LID_LED) LED_SPEED_SUFFIX
+#define LID_LED_DITHER_FILE               LED_SYSFS_ROOT STR(ATTR_LID_LED) LED_DITHER_SUFFIX
+#define LID_LED_CROSSFADING_FILE          LED_SYSFS_ROOT STR(ATTR_LID_LED) LED_CROSSFADING_SUFFIX
 
 /**
  * Recommended buffer size for reading the value of the state attribute,

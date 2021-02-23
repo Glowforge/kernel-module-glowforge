@@ -1,7 +1,7 @@
-/**
+/*
  * thermal.c
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,10 +17,12 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
+
 #include "thermal_private.h"
 #include "device_attr.h"
 #include "io.h"
 #include "uapi/glowforge.h"
+#include "ktime_compat.h"
 #include <linux/interrupt.h>
 
 /** Interval between fan speed measurements */
@@ -33,7 +35,7 @@
 #define HEATER_DUTY_CYCLE_BITS  (FIELD_SIZEOF(struct thermal, heater_duty_fraction)*8)
 #define HEATER_DUTY_MAX         ((1 << HEATER_DUTY_CYCLE_BITS)-1)
 
-static const ktime_t heater_pwm_period = { .tv64 = HEATER_PWM_PERIOD_NS };
+static const ktime_t heater_pwm_period = NSEC_TO_KTIME(HEATER_PWM_PERIOD_NS);
 static const ktime_t ktime_zero = {0};
 static void thermal_set_heater_duty_fraction(struct thermal *self, u16 duty_fraction);
 

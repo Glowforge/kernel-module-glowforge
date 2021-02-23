@@ -3,7 +3,7 @@
  *
  * Private header for the stepper driver.
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@
 #include <linux/platform_device.h>
 #include <linux/platform_data/dma-imx-sdma.h>
 #include <linux/platform_data/epit-imx.h>
+#include "tasklet_hrtimer_compat.h"
 
 /* If 1, installs a handler that disables all hardware on a kernel panic. */
 #define INSTALL_PANIC_HANDLER 0
@@ -57,12 +58,23 @@ struct cnc;
 int cnc_run(struct cnc *self);
 
 /**
- * Immediately stops the SDMA script and returns to the idle state.
+ * Begins a controlled deceleration. At the end of the deceleration period,
+ * the SDMA script is stopped and the idle state is entered.
  *
  * @return 0 on success
  *         -EPERM if the driver is in the fault state.
  */
 int cnc_stop(struct cnc *self);
+
+/**
+ * Immediately stops the SDMA script and returns to the idle state.
+ * This will likely cause the motors to miss steps if they are running at
+ * high speeds.
+ *
+ * @return 0 on success
+ *         -EPERM if the driver is in the fault state.
+ */
+int cnc_halt(struct cnc *self);
 
 /**
  * Performs a controlled acceleration, running backward through `num_steps`
@@ -270,6 +282,12 @@ uint32_t cnc_buffer_fifo_start_phys(struct cnc *self);
 int cnc_buffer_is_empty(struct cnc *self);
 
 /**
+ * Returns the number of bytes available in the pulse data buffer.
+ * May sleep; not safe to call from atomic context.
+ */
+size_t cnc_buffer_get_free_space(struct cnc *self);
+
+/**
  * Returns the total number of bytes enqueued in the pulse data buffer since
  * the last clear. Does not sleep.
  */
@@ -372,6 +390,10 @@ struct cnc {
   volatile u32 ignored_faults;
   /** Tasklet scheduled by fault interrupt handlers. */
   struct tasklet_struct fault_tasklet;
+#ifdef IMX_SDMA_CALLBACK_IN_HARDIRQ
+  /** Tasklet that implements the bottom half of the SDMA interrupt handler. */
+  struct tasklet_struct sdma_irq_tasklet;
+#endif
   /**
    * Atomic bitfield indicating faults that have not been handled.
    * If a fault needs to be asserted (esp. in hardirq context), use set_bit()
@@ -386,7 +408,7 @@ struct cnc {
    */
   u32 ramp_step_freq_delta;
   /** Timer that drives acceleration/deceleration updates. */
-  struct tasklet_hrtimer ramp_timer;
+  SOFTIRQ_HRTIMER ramp_timer;
   /** Toggles the charge pump input during a cut to keep the laser on. */
   struct hrtimer charge_pump_timer;
 #if INSTALL_PANIC_HANDLER

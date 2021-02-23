@@ -1,0 +1,18 @@
+#ifndef KERNEL_SRC_LEDTRIG_COMPAT_H_
+#define KERNEL_SRC_LEDTRIG_COMPAT_H_
+
+#include <linux/leds.h>
+#include <linux/version.h>
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,14,28)
+#define LEDTRIG_ACTIVATE_RETURN_TYPE void
+#define LEDTRIG_ACTIVATE_RETURN_OK
+#define LEDTRIG_ACTIVATE_RETURN_ERR
+#else
+#define LEDTRIG_ACTIVATE_RETURN_TYPE int
+#define LEDTRIG_ACTIVATE_RETURN_OK   0
+#define LEDTRIG_ACTIVATE_RETURN_ERR  -1
+#endif
+
+#endif
+

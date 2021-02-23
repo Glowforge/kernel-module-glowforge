@@ -3,7 +3,7 @@
  *
  * Manages the queue of pulse data shared with the SDMA engine.
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,14 +26,14 @@
  * Size of the contiguous memory region used as the pulse data buffer.
  * Must be a power of two.
  */
-#define CNC_BUFFER_SIZE     (128 * SZ_1M)
+#define CNC_BUFFER_SIZE     (32 * SZ_1M)
 
 /**
  * Enforce a minimum gap between head and tail.
  * This allows a small amount of data to be retained after it has been
  * processed.
  */
-#define CNC_BUFFER_GAP_SIZE (32 * SZ_1K)
+#define CNC_BUFFER_GAP_SIZE (256 * SZ_1K)
 
 
 int cnc_buffer_init(struct cnc *self)
@@ -61,7 +61,8 @@ void cnc_buffer_destroy(struct cnc *self)
  * Synchronizes the current head value from the SDMA engine to the kfifo.
  * Should be called before any operation that requires querying the amount of
  * free space in the fifo.
- * Performed by cnc_buffer_is_empty() and cnc_buffer_add_user_data().
+ * Performed by cnc_buffer_is_empty(), cnc_buffer_get_free_space(), and
+ * cnc_buffer_add_user_data().
  * May sleep.
  * Returns nonzero if there was an error reading the SDMA channel context.
  */
@@ -156,6 +157,16 @@ int cnc_buffer_is_empty(struct cnc *self)
 {
   cnc_buffer_sync_head(self);
   return kfifo_is_empty(&self->pulsebuf_fifo);
+}
+
+/* may sleep */
+size_t cnc_buffer_get_free_space(struct cnc *self)
+{
+  size_t avail;
+  cnc_buffer_sync_head(self);
+  avail = kfifo_avail(&self->pulsebuf_fifo);
+  /* subtract the gap size */
+  return (avail > CNC_BUFFER_GAP_SIZE) ? avail-CNC_BUFFER_GAP_SIZE : 0;
 }
 
 uint32_t cnc_buffer_max_backtrack_length(struct cnc *self)

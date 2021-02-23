@@ -1,9 +1,7 @@
 /**
  * cnc.c
  *
- * Drives the stepper motors and laser.
- *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +17,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Drives the stepper motors and laser.
  * The step and direction pins are controlled by an SDMA script;
  * this subsystem is responsible for overseeing the operation of
  * the SDMA engine, the periodic interval timer (EPIT) that drives it,
@@ -34,6 +33,8 @@
 #include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
+#include "ktime_compat.h"
+#include "tasklet_hrtimer_compat.h"
 
 /** Module parameters */
 extern int cnc_enabled;
@@ -122,19 +123,11 @@ static const u32 fatal_fault_conditions =
 #define SIGNAL_FROM_FAULT_DEV_ID(dev_id) ((u32)(dev_id) & 3U)
 
 static const u32 sdma_script[] = {
-  0x09010b00, 0x69c80400, 0x69c84e00, 0x7d6e50e7, 0x00bc52ef, 0x02bc00ca, 0x7d68009e, 0x68106209,
-  0x02677d67, 0x50f7007f, 0x7c02124a, 0x02240353, 0x02617c01, 0x0333033c, 0x03520263, 0x7c02035c,
-  0x03320331, 0x02667c01, 0x03516b2b, 0x080d7803, 0x01890189, 0x01890260, 0x7c010356, 0x02627c02,
-  0x0354035d, 0x02657c01, 0x0355033e, 0x033f0264, 0x7c02035e, 0x035f5097, 0x03b06b2b, 0x08327803,
-  0x01890189, 0x01890260, 0x7c0650c7, 0x02617c01, 0x20021801, 0x58c70262, 0x7c0650cf, 0x02637d01,
-  0x20021801, 0x58cf0265, 0x7c0650d7, 0x02667d01, 0x20021801, 0x58d70121, 0x03360334, 0x033d0335,
-  0x6b2b52f7, 0x50df009a, 0x58df50e7, 0x009a58e7, 0x50ff4800, 0x7d042001, 0x58ff7c01, 0x03000162,
-  0x01227d93, 0x04000160, 0x7d8f0300, 0x04000160, 0x7d870161, 0x7de650f7, 0x007f7d06, 0x60d06dd3,
-  0x3a7f6ac8, 0x68d30141, 0x01420160, 0x7dda0000
+#include "sdma.asm.h"
 };
 
-static const ktime_t ramp_update_interval_ktime = { .tv64 = RAMP_UPDATE_INTERVAL_NS };
-static const ktime_t charge_pump_interval_ktime  = { .tv64 = CHARGE_PUMP_INTERVAL_NS };
+static const ktime_t ramp_update_interval_ktime = NSEC_TO_KTIME(RAMP_UPDATE_INTERVAL_NS);
+static const ktime_t charge_pump_interval_ktime = NSEC_TO_KTIME(CHARGE_PUMP_INTERVAL_NS);
 
 extern struct kobject *glowforge_kobj;
 
@@ -312,8 +305,7 @@ static void _cnc_ramp_start(struct cnc *self)
   /* Disable DMA control of laser enable; force the line low. */
   gpio_direction_input(self->gpios[PIN_LASER_ON]);
   /* Begin periodic updates */
-  tasklet_hrtimer_start(&self->ramp_timer, ramp_update_interval_ktime,
-    HRTIMER_MODE_REL);
+  SOFTIRQ_HRTIMER_START(&self->ramp_timer, ramp_update_interval_ktime);
 }
 
 
@@ -326,7 +318,7 @@ static void _cnc_ramp_stop(struct cnc *self)
   /* If called by ramp_update_tasklet_fn, don't cancel the timer, because */
   /* we're already running in a tasklet and the kernel doesn't like that */
   if (!in_softirq()) {
-    tasklet_hrtimer_cancel(&self->ramp_timer);
+    SOFTIRQ_HRTIMER_CANCEL(&self->ramp_timer);
   }
   self->status.decelerating = false;
   self->status.accelerating = false;
@@ -382,8 +374,7 @@ static enum hrtimer_restart ramp_update_tasklet_fn(struct hrtimer *timer)
   /* because the tasklet won't ever run concurrently with itself or any other */
   /* tasklet (uniprocessor system, tasklets can't be preempted), and won't */
   /* run in the sections protected by spin_lock_bh()/spin_unlock_bh(). */
-  struct tasklet_hrtimer *tasklet_hrtimer = container_of(timer, struct tasklet_hrtimer, timer);
-  struct cnc *self = container_of(tasklet_hrtimer, struct cnc, ramp_timer);
+  struct cnc *self = container_of(TO_SOFTIRQ_HRTIMER(timer), struct cnc, ramp_timer);
 
   /* sanity check */
   if (!self->status.decelerating && !self->status.accelerating) {
@@ -416,13 +407,34 @@ static enum hrtimer_restart ramp_update_tasklet_fn(struct hrtimer *timer)
 /**
  * Called when the SDMA engine executes a "done 3" instruction, setting the
  * interrupt flag for our channel.
- * This callback executes in tasklet context.
+ * On kernel 3.14.28, this callback is executed in tasklet context, so an extra
+ * tasklet is not required.
+ * On kernel 5.x, the callback is executed in hard IRQ context; it quickly
+ * disables the SDMA event (so the kernel does not get flooded by repeated
+ * interrupts), then defers the rest of the work to a tasklet.
  */
+static void sdma_irq_bottom_half(unsigned long data);
 void cnc_sdma_interrupt(void *param)
 {
   /* The "on_interrupt" flags modify the behavior of this IRQ handler. */
+#ifdef IMX_SDMA_CALLBACK_IN_HARDIRQ
   struct cnc *self = (struct cnc *)param;
+  sdma_event_disable(self->sdmac, epit_sdma_event(self->epit));
+  tasklet_hi_schedule(&self->sdma_irq_tasklet);
+#else
+  sdma_irq_bottom_half((unsigned long)param);
+#endif
+}
+
+
+static void sdma_irq_bottom_half(unsigned long data)
+{
+  struct cnc *self = (struct cnc *)data;
   spin_lock_bh(&self->status_lock);
+#ifdef IMX_SDMA_CALLBACK_IN_HARDIRQ
+  /* Reenable the SDMA event that was disabled in the top half */
+  sdma_event_enable(self->sdmac, epit_sdma_event(self->epit));
+#endif
   /* "enable_laser_on_interrupt" is set when we're expecting an SDMA waypoint */
   /* interrupt during a resume. */
   if (unlikely(self->status.enable_laser_on_interrupt)) {
@@ -635,7 +647,7 @@ int cnc_resume(struct cnc *self, uint32_t laser_delay_steps)
 
 /**
  * Idle: do nothing
- * Running: stop cut
+ * Running: stop cut (with controlled deceleration)
  * Disabled: do nothing (remain in disabled state)
  * Fault: do nothing (return error)
  */
@@ -657,6 +669,38 @@ int cnc_stop(struct cnc *self)
     case STATE_RUNNING:
       /* Start a controlled deceleration. */
       _cnc_decel_start(self);
+      break;
+  }
+
+  spin_unlock_bh(&self->status_lock);
+  return ret;
+}
+
+
+/**
+ * Idle: do nothing
+ * Running: stop cut instantly
+ * Disabled: do nothing (remain in disabled state)
+ * Fault: do nothing (return error)
+ */
+int cnc_halt(struct cnc *self)
+{
+  int ret = 0;
+  spin_lock_bh(&self->status_lock);
+
+  switch (self->status.state) {
+    case STATE_IDLE:
+    case STATE_DISABLED:
+      break;
+
+    case STATE_FAULT:
+    default:
+      ret = -EPERM;
+      break;
+
+    case STATE_RUNNING:
+      /* Stop process pulse data immediately. */
+      _driver_stop(self, STATE_IDLE);
       break;
   }
 
@@ -1147,8 +1191,11 @@ int cnc_probe(struct platform_device *pdev)
   mutex_init(&self->lock);
   spin_lock_init(&self->status_lock);
   tasklet_init(&self->fault_tasklet, fault_tasklet_fn, (unsigned long)self);
+#ifdef IMX_SDMA_CALLBACK_IN_HARDIRQ
+  tasklet_init(&self->sdma_irq_tasklet, sdma_irq_bottom_half, (unsigned long)self);
+#endif
   cnc_set_step_frequency(self, STEP_FREQUENCY_DEFAULT);
-  tasklet_hrtimer_init(&self->ramp_timer, ramp_update_tasklet_fn, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+  SOFTIRQ_HRTIMER_INIT(&self->ramp_timer, ramp_update_tasklet_fn, CLOCK_MONOTONIC);
   hrtimer_init(&self->charge_pump_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
   self->charge_pump_timer.function = charge_pump_timer_cb;
 
@@ -1308,7 +1355,7 @@ int cnc_remove(struct platform_device *pdev)
   dev_info(&pdev->dev, "%s: started", __func__);
   epit_stop(self->epit);
   sdma_set_channel_interrupt_callback(self->sdmac, NULL, NULL);
-  tasklet_hrtimer_cancel(&self->ramp_timer);
+  SOFTIRQ_HRTIMER_CANCEL(&self->ramp_timer);
   hrtimer_cancel(&self->charge_pump_timer);
 #if INSTALL_PANIC_HANDLER
   atomic_notifier_chain_unregister(&panic_notifier_list, &self->panic_notifier);
@@ -1322,6 +1369,9 @@ int cnc_remove(struct platform_device *pdev)
   misc_deregister(&self->pulsedev);
   cnc_buffer_destroy(self);
   mutex_destroy(&self->lock);
+#ifdef IMX_SDMA_CALLBACK_IN_HARDIRQ
+  tasklet_kill(&self->sdma_irq_tasklet);
+#endif
   tasklet_kill(&self->fault_tasklet);
   flush_scheduled_work();
   dev_info(&pdev->dev, "%s: done", __func__);
