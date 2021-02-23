@@ -3,7 +3,7 @@
  *
  * Stepper driver userspace API handlers.
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -107,6 +107,7 @@ static ssize_t pulsedev_write(struct file *filp, const char __user *data, size_t
 }
 
 
+/* Deprecated. */
 static int pulsedev_fsync(struct file *filp, loff_t start, loff_t end, int datasync)
 {
   return 0;
@@ -219,6 +220,14 @@ static ssize_t position_show(struct device *dev, struct device_attribute *attr, 
 }
 
 
+static ssize_t free_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+  struct cnc *self = dev_get_drvdata(dev);
+  return scnprintf(buf, PAGE_SIZE, "%u\n", cnc_buffer_get_free_space(self));
+
+}
+
+
 static ssize_t sdma_context_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
   struct cnc *self = dev_get_drvdata(dev);
@@ -299,6 +308,7 @@ static ssize_t resume_store(struct device *dev, struct device_attribute *attr, c
 
 DEFINE_COMMAND_ATTR(ATTR_RUN);
 DEFINE_COMMAND_ATTR(ATTR_STOP);
+DEFINE_COMMAND_ATTR(ATTR_HALT);
 DEFINE_COMMAND_ATTR(ATTR_DISABLE);
 DEFINE_COMMAND_ATTR(ATTR_ENABLE);
 DEFINE_DEVICE_ATTR(ATTR_RESUME, S_IWUSR, NULL, resume_store);
@@ -307,6 +317,7 @@ DEFINE_DEVICE_ATTR(ATTR_FAULTS, S_IRUSR, faults_show, NULL);
 DEFINE_DEVICE_ATTR(ATTR_IGNORED_FAULTS, S_IRUSR|S_IWUSR, ignored_faults_show, ignored_faults_store);
 DEFINE_DEVICE_ATTR(ATTR_STEP_FREQ, S_IRUSR|S_IWUSR, step_freq_show, step_freq_store);
 DEFINE_DEVICE_ATTR(ATTR_POSITION, S_IRUSR, position_show, NULL);
+DEFINE_DEVICE_ATTR(ATTR_FREE, S_IRUSR, free_show, NULL);
 DEFINE_DEVICE_ATTR(ATTR_SDMA_CONTEXT, S_IRUSR, sdma_context_show, NULL);
 DEFINE_DEVICE_ATTR(ATTR_MOTOR_LOCK, S_IRUSR|S_IWUSR, motor_lock_show, motor_lock_store);
 DEFINE_MODE_ATTR(ATTR_X_MODE, AXIS_X);
@@ -323,11 +334,13 @@ static struct attribute *cnc_attrs[] = {
   DEV_ATTR_PTR(ATTR_STEP_FREQ),
   DEV_ATTR_PTR(ATTR_RUN),
   DEV_ATTR_PTR(ATTR_STOP),
+  DEV_ATTR_PTR(ATTR_HALT),
   DEV_ATTR_PTR(ATTR_RESUME),
   DEV_ATTR_PTR(ATTR_DISABLE),
   DEV_ATTR_PTR(ATTR_ENABLE),
   DEV_ATTR_PTR(ATTR_LASER_LATCH),
   DEV_ATTR_PTR(ATTR_POSITION),
+  DEV_ATTR_PTR(ATTR_FREE),
   DEV_ATTR_PTR(ATTR_SDMA_CONTEXT),
   DEV_ATTR_PTR(ATTR_X_MODE),
   DEV_ATTR_PTR(ATTR_Y_MODE),

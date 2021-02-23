@@ -3,7 +3,7 @@
  *
  * SPI driver for the PIC that acts as an analog I/O controller.
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +19,12 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * The PIC presents itself as a series of 16-bit "registers" that represent
+ * For more information on the protocol used for communication between the
+ * CPU and the PIC, see the PIC source code in GlowforgePIC.X. Basically,
+ * the PIC presents itself as a series of 16-bit "registers" that represent
  * sensor values or output levels. Each transaction is exactly 3 bytes long.
  * A write is one command byte (with the high bit set) followed by two data
- * bytes in litle-endian order. A read is one command byte (with the high bit
+ * bytes in little-endian order. A read is one command byte (with the high bit
  * clear) followed by two dummy bytes.
  *
  * This module provides several userspace APIs:

@@ -1,8 +1,15 @@
 /**
  * Glowforge kernel module
  *
- * Copyright (C) 2015-2018 Glowforge, Inc. <opensource@glowforge.com>
- * Written by Matt Sarnoff with contributions from Taylor Vaughn.
+ * Provides a userspace API for the hardware:
+ * - drives the steppers, laser, and fans
+ * - interfaces with the PIC to read and set analog signals
+ *   (sensors, LEDs, etc)
+ * - etc.
+ *
+ * Copyright (C) 2015-2021 Glowforge, Inc. <opensource@glowforge.com>
+ * Written by Matt Sarnoff with contributions from Taylor Vaughn,
+ * Nicodemus Paradiso, and John Tapsell.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
